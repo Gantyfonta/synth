@@ -13,7 +13,12 @@ import {
   Volume2,
   ChevronRight,
   Maximize2,
-  Activity
+  Activity,
+  Share2,
+  Copy,
+  Download,
+  Upload,
+  X
 } from 'lucide-react';
 import { NoteData, SynthSettings, SCALES, OCTAVES, WaveformType } from './types';
 
@@ -149,6 +154,38 @@ export default function App() {
   }, [isPlaying]);
 
   // --- Handlers ---
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareCode, setShareCode] = useState('');
+
+  // --- Handlers ---
+  const handleExport = () => {
+    const data = {
+      notes,
+      bpm,
+      steps,
+      selectedScale,
+      synthSettings,
+    };
+    const code = btoa(JSON.stringify(data));
+    setShareCode(code);
+    setShowShareModal(true);
+  };
+
+  const handleImport = () => {
+    try {
+      const decoded = JSON.parse(atob(shareCode));
+      if (decoded.notes) setNotes(decoded.notes);
+      if (decoded.bpm) setBpm(decoded.bpm);
+      if (decoded.steps) setSteps(decoded.steps);
+      if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
+      if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
+      setShowShareModal(false);
+      alert('Project imported successfully!');
+    } catch (e) {
+      alert('Invalid share code.');
+    }
+  };
+
   const togglePlay = async () => {
     if (Tone.getContext().state !== 'running') {
       await Tone.start();
@@ -299,11 +336,73 @@ export default function App() {
             </select>
           </div>
 
+          <button 
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sky-400 rounded-lg border border-zinc-700 transition-all active:scale-95 text-[10px] font-black uppercase tracking-widest"
+          >
+            <Share2 className="w-3 h-3" />
+            Share
+          </button>
+
           <button className="px-5 py-2 bg-sky-600 text-white rounded shadow-lg shadow-sky-950/40 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-sky-500 active:scale-95 transition-all">
             Export MIDI
           </button>
         </div>
       </header>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#18181B] border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+          >
+            <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-widest text-sky-400">Share Project</h3>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="text-zinc-500 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest leading-relaxed">
+                Copy the code below to share your project, or paste a code to import a new one.
+              </p>
+              
+              <textarea 
+                value={shareCode}
+                onChange={(e) => setShareCode(e.target.value)}
+                className="w-full h-32 bg-[#0F0F11] border border-zinc-800 rounded-xl p-4 text-[10px] font-mono text-sky-300 focus:outline-none focus:border-sky-500/50 resize-none custom-scrollbar"
+                spellCheck={false}
+              />
+              
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareCode);
+                    alert('Copied to clipboard!');
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Code
+                </button>
+                <button 
+                  onClick={handleImport}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Code
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 flex overflow-hidden">
