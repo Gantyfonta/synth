@@ -1,0 +1,6 @@
+{
+  "name": "NeonGrid Synth",
+  "description": "A high-performance grid sequencer and synthesizer with adjustable note lengths, custom waveforms, and scale-snapping.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
