@@ -547,8 +547,9 @@ export default function App() {
                 />
               )}
 
-              {pitchList.map((pitch, r) => (
-                Array.from({ length: steps }).map((_, c) => {
+              {pitchList.map((pitch, r) => {
+                const isSharp = pitch.includes('#') || pitch.includes('b');
+                return Array.from({ length: steps }).map((_, c) => {
                   const active = isCellActive(r, c);
                   const preview = isCellPreview(r, c);
                   const noteStart = isNoteStart(r, c);
@@ -559,7 +560,8 @@ export default function App() {
                       onMouseDown={() => onCellMouseDown(r, c)}
                       onMouseEnter={() => onCellMouseEnter(r, c)}
                       className={`
-                        absolute border-r border-b border-zinc-800/10 cursor-crosshair
+                        absolute border-r border-b border-zinc-800/10 cursor-crosshair transition-colors
+                        ${isSharp ? 'bg-zinc-950/40' : ''}
                         ${active || preview ? 'z-10' : 'hover:bg-zinc-800/30'}
                       `}
                       style={{ 
@@ -586,8 +588,8 @@ export default function App() {
                       )}
                     </div>
                   );
-                })
-              ))}
+                });
+              })}
             </div>
           </div>
         </div>
