@@ -157,7 +157,24 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareCode, setShareCode] = useState('');
 
-  // --- Handlers ---
+  // Auto-import from URL hash on load
+  useEffect(() => {
+    const hashData = window.location.hash.replace('#', '');
+    if (hashData) {
+      try {
+        const decoded = JSON.parse(atob(hashData));
+        if (decoded.notes) setNotes(decoded.notes);
+        if (decoded.bpm) setBpm(decoded.bpm);
+        if (decoded.steps) setSteps(decoded.steps);
+        if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
+        if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
+        console.log('Project loaded from URL');
+      } catch (e) {
+        console.error('Failed to load project from URL hash');
+      }
+    }
+  }, []);
+
   const handleExport = () => {
     const data = {
       notes,
@@ -168,6 +185,7 @@ export default function App() {
     };
     const code = btoa(JSON.stringify(data));
     setShareCode(code);
+    window.location.hash = code; // Update URL
     setShowShareModal(true);
   };
 
@@ -180,10 +198,22 @@ export default function App() {
       if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
       if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
       setShowShareModal(false);
-      alert('Project imported successfully!');
     } catch (e) {
       alert('Invalid share code.');
     }
+  };
+
+  const downloadProject = () => {
+    const data = {
+      notes, bpm, steps, selectedScale, synthSettings
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `neongrid-project-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const togglePlay = async () => {
@@ -380,13 +410,33 @@ export default function App() {
                 spellCheck={false}
               />
               
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    alert('Share link copied to clipboard!');
+                  }}
+                  className="flex-[2] flex items-center justify-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-sky-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Copy URL Link
+                </button>
+                <button 
+                  onClick={downloadProject}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  JSON
+                </button>
+              </div>
+
+              <div className="flex gap-3">
                 <button 
                   onClick={() => {
                     navigator.clipboard.writeText(shareCode);
-                    alert('Copied to clipboard!');
+                    alert('Code copied!');
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
                 >
                   <Copy className="w-4 h-4" />
                   Copy Code
