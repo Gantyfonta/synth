@@ -149,40 +149,50 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying]);
 
+  // --- Auto-Load from URL Hash ---
   useEffect(() => {
-    const hashData = window.location.hash.replace('#', '');
-    if (hashData) {
-      try {
-        const decoded = JSON.parse(atob(hashData));
-        if (decoded.notes) setNotes(decoded.notes);
-        if (decoded.bpm) setBpm(decoded.bpm);
-        if (decoded.steps) setSteps(decoded.steps);
-        if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
-        if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
-      } catch (e) {
-        console.error('Failed to load project from URL');
+    const loadFromHash = () => {
+      const hashData = window.location.hash.replace('#', '');
+      if (hashData && hashData.length > 20) { // arbitrary length check for valid code
+        try {
+          const decoded = JSON.parse(atob(hashData));
+          if (decoded.notes) setNotes(decoded.notes);
+          if (decoded.bpm) setBpm(decoded.bpm);
+          if (decoded.steps) setSteps(decoded.steps);
+          if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
+          if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
+          console.log('Project loaded from URL state');
+        } catch (e) {
+          console.error('Failed to parse URL project data');
+        }
       }
-    }
+    };
+    loadFromHash();
+    window.addEventListener('hashchange', loadFromHash);
+    return () => window.removeEventListener('hashchange', loadFromHash);
   }, []);
 
   const handleExport = () => {
     const data = { notes, bpm, steps, selectedScale, synthSettings };
     const code = btoa(JSON.stringify(data));
     setShareCode(code);
-    window.location.hash = code;
+    window.location.hash = code; // Update URL for easy copying
     setShowShareModal(true);
   };
 
   const handleImport = () => {
     try {
-      const decoded = JSON.parse(atob(shareCode));
+      const decoded = JSON.parse(atob(shareCode.trim()));
       if (decoded.notes) setNotes(decoded.notes);
       if (decoded.bpm) setBpm(decoded.bpm);
       if (decoded.steps) setSteps(decoded.steps);
       if (decoded.selectedScale) setSelectedScale(decoded.selectedScale);
       if (decoded.synthSettings) setSynthSettings(decoded.synthSettings);
       setShowShareModal(false);
-    } catch (e) { alert('Invalid code'); }
+      window.location.hash = shareCode.trim();
+    } catch (e) { 
+      alert('Error: Could not decode project code. Make sure it was copied correctly.'); 
+    }
   };
 
   const downloadProject = () => {
@@ -191,7 +201,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `neongrid-${Date.now()}.json`;
+    a.download = `sequencer-project-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -202,22 +212,32 @@ function App() {
       Tone.getTransport().stop();
       setIsPlaying(false);
     } else {
-      Tone.getTransport().start();
+      // Small delay to ensure currentStep resets or matches transport
+      Tone.getTransport().start("+0.1");
       setIsPlaying(true);
     }
   };
 
   const onCellMouseDown = (r: number, c: number) => {
     const pitch = pitchList[r];
+    // Check if clicking existing note to delete
     const existing = notes.find(n => n.pitch === pitch && n.startStep <= c && (n.startStep + n.duration) > c);
     if (existing) {
       setNotes(prev => prev.filter(n => n.id !== existing.id));
       return;
     }
+    
     setIsDragging(true);
     setDragStart({ r, c });
-    const newNote: NoteData = { id: Math.random().toString(36).substr(2, 9), pitch, startStep: c, duration: 1 };
+    const newNote: NoteData = { 
+      id: Math.random().toString(36).substr(2, 9), 
+      pitch, 
+      startStep: c, 
+      duration: 1 
+    };
     setPreviewNote(newNote);
+    
+    // Play sound preview
     synthRef.current?.triggerAttackRelease(pitch, '8n');
   };
 
@@ -230,7 +250,9 @@ function App() {
 
   useEffect(() => {
     const onGlobalMouseUp = () => {
-      if (isDragging && previewNote) setNotes(prev => [...prev, previewNote]);
+      if (isDragging && previewNote) {
+        setNotes(prev => [...prev, previewNote]);
+      }
       setIsDragging(false);
       setDragStart(null);
       setPreviewNote(null);
@@ -254,111 +276,306 @@ function App() {
     return notes.some(n => n.pitch === pitch && n.startStep === c) || (previewNote?.pitch === pitch && previewNote.startStep === c);
   };
 
+  const getNoteDuration = (r: number, c: number) => {
+    const pitch = pitchList[r];
+    if (previewNote?.pitch === pitch && previewNote.startStep === c) return previewNote.duration;
+    const note = notes.find(n => n.pitch === pitch && n.startStep === c);
+    return note ? note.duration : 1;
+  };
+
   return (
-    <div className="min-h-screen flex flex-col select-none bg-[#0F0F11] overflow-hidden">
-      <header className="h-16 flex items-center justify-between px-6 bg-[#18181B] border-b border-zinc-800 shadow-xl z-20">
-        <div className="flex items-center gap-8">
+    <div className="min-h-screen flex flex-col select-none bg-[#0F0F11] text-zinc-300 font-sans overflow-hidden">
+      {/* Header */}
+      <header className="h-16 shrink-0 flex items-center justify-between px-6 bg-[#18181B] border-b border-zinc-800 shadow-2xl z-50">
+        <div className="flex items-center gap-10">
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 bg-sky-500 rounded flex items-center justify-center">
-              <Activity className="w-5 h-5 text-zinc-900" />
+             <div className="w-9 h-9 bg-sky-500 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(14,165,233,0.3)]">
+              <Activity className="w-5 h-5 text-zinc-950" />
             </div>
-            <span className="text-xl font-black tracking-tighter text-sky-400 uppercase italic">NEON-PHASE V1</span>
+            <div className="flex flex-col -gap-1">
+              <span className="text-lg font-black tracking-tighter text-white uppercase italic">NEON-PHASE</span>
+              <span className="text-[8px] font-bold text-sky-500 uppercase tracking-widest px-0.5">Portable Sequencer V1.0</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-            <button onClick={togglePlay} className={`w-8 h-8 rounded-full flex items-center justify-center ${isPlaying ? 'bg-rose-500' : 'bg-zinc-800 text-green-500'}`}>
+
+          <div className="flex items-center gap-5 bg-zinc-950/50 px-5 py-2.5 rounded-2xl border border-zinc-800 shadow-inner">
+            <button 
+              onClick={togglePlay} 
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-90 ${isPlaying ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-zinc-800 text-emerald-400 hover:text-emerald-300 hover:bg-zinc-700'}`}
+            >
               {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
             </button>
-            <button onClick={() => setNotes([])} className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400"><Trash2 className="w-4 h-4" /></button>
-            <div className="h-4 w-px bg-zinc-700"></div>
-            <div className="flex flex-col">
-              <span className="text-[9px] text-zinc-500 uppercase font-black">Tempo</span>
-              <span className="text-sm font-mono text-sky-400">{bpm} BPM</span>
+            <div className="h-6 w-px bg-zinc-800"></div>
+            <div className="flex items-center gap-4">
+               <div className="flex flex-col">
+                <span className="text-[8px] text-zinc-500 uppercase font-black tracking-widest mb-0.5">BPM</span>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" 
+                    value={bpm} 
+                    onChange={(e) => setBpm(Number(e.target.value))}
+                    className="w-12 bg-transparent text-sm font-mono text-sky-400 focus:outline-none"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <button onClick={()=>setBpm(b=>b+1)} className="text-[10px] text-zinc-600 hover:text-zinc-400">▲</button>
+                    <button onClick={()=>setBpm(b=>b-1)} className="text-[10px] text-zinc-600 hover:text-zinc-400">▼</button>
+                  </div>
+                </div>
+              </div>
             </div>
+            <div className="h-6 w-px bg-zinc-800"></div>
+            <button 
+              onClick={() => setNotes([])} 
+              title="Clear Board"
+              className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-rose-400 hover:border-rose-900/30 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
+
         <div className="flex items-center gap-4">
-          <button onClick={handleExport} className="px-4 py-2 bg-zinc-800 text-sky-400 rounded-lg border border-zinc-700 text-[10px] uppercase font-black tracking-widest">Share</button>
+          <div className="flex items-center gap-2 pr-4 border-r border-zinc-800">
+             <span className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">Scale</span>
+             <select 
+              value={selectedScale}
+              onChange={(e) => setSelectedScale(e.target.value as any)}
+              className="bg-zinc-900 border border-zinc-800 text-[10px] text-sky-400 rounded px-2 py-1 uppercase font-black focus:outline-none"
+             >
+               {Object.keys(SCALES).map(s => <option key={s} value={s}>{s}</option>)}
+             </select>
+          </div>
+          <button 
+            onClick={handleExport}
+            className="flex items-center gap-2 px-6 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(14,165,233,0.2)] active:scale-95"
+          >
+            <Share2 className="w-4 h-4" />
+            Share & Export
+          </button>
         </div>
       </header>
 
+      {/* Share Modal */}
       {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-[#18181B] border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-black uppercase text-sky-400">Share Project</h3>
-              <X className="cursor-pointer" onClick={()=>setShowShareModal(false)} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-[#18181B] border border-zinc-800 rounded-3xl w-full max-w-lg shadow-[0_30px_60px_rgba(0,0,0,0.5)] overflow-hidden"
+          >
+            <div className="p-8 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-tighter text-white">Project Studio</h3>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Import, Export, and Sharing</p>
+              </div>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <textarea value={shareCode} onChange={(e)=>setShareCode(e.target.value)} className="w-full h-32 bg-[#0F0F11] border border-zinc-800 rounded p-4 text-[10px] text-sky-300 font-mono mb-4" />
-            <div className="flex gap-2">
-              <button onClick={()=>{navigator.clipboard.writeText(window.location.href); alert('URL Copied');}} className="flex-1 py-3 bg-zinc-800 text-sky-400 rounded-xl text-[10px] font-black uppercase tracking-widest">Copy URL</button>
-              <button onClick={handleImport} className="flex-1 py-3 bg-sky-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Import Code</button>
+            
+            <div className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Project Data Code</label>
+                <textarea 
+                  value={shareCode}
+                  onChange={(e) => setShareCode(e.target.value)}
+                  className="w-full h-32 bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[11px] font-mono text-sky-400 focus:outline-none focus:border-sky-500/50 resize-none"
+                  spellCheck={false}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    alert('Shareable link copied to clipboard!');
+                  }}
+                  className="flex flex-col items-center gap-3 py-6 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl transition-all group"
+                >
+                  <Share2 className="w-6 h-6 text-sky-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 group-hover:text-white">Copy Share Link</span>
+                </button>
+                <button 
+                  onClick={downloadProject}
+                  className="flex flex-col items-center gap-3 py-6 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl transition-all group"
+                >
+                  <Download className="w-6 h-6 text-zinc-400 group-hover:text-white group-hover:scale-110 transition-transform" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-white">Download JSON</span>
+                </button>
+              </div>
+
+              <button 
+                onClick={handleImport}
+                className="w-full py-5 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-sky-900/20 active:scale-[0.98]"
+              >
+                Import Code & Refresh
+              </button>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 
+      {/* Main Grid & Sidebar */}
       <main className="flex-1 flex overflow-hidden">
-        <aside className="w-64 bg-[#18181B] p-6 border-r border-zinc-800/50 flex flex-col gap-6 overflow-y-auto">
+        {/* Synth Sidebar */}
+        <aside className="w-72 shrink-0 bg-[#18181B] p-8 border-r border-zinc-800/50 flex flex-col gap-10 overflow-y-auto custom-scrollbar">
           <section>
-            <h3 className="text-[10px] font-black uppercase text-zinc-500 mb-2">Engine</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Music className="w-3.5 h-3.5 text-sky-500" />
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Oscillator Type</h3>
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              {['sine', 'square', 'sawtooth', 'triangle'].map(type => (
+              {(['sine', 'square', 'sawtooth', 'triangle'] as WaveformType[]).map(type => (
                 <button
                   key={type}
-                  onClick={() => setSynthSettings(s => ({ ...s, waveform: type as WaveformType }))}
-                  className={`py-2 rounded border text-[10px] font-black uppercase ${synthSettings.waveform === type ? 'border-sky-500 text-sky-400 bg-zinc-800' : 'border-zinc-800 text-zinc-500'}`}
+                  onClick={() => setSynthSettings(s => ({ ...s, waveform: type }))}
+                  className={`py-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${synthSettings.waveform === type ? 'border-sky-500 bg-sky-500/5 text-sky-400' : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}
                 >
                   {type}
                 </button>
               ))}
             </div>
           </section>
-          <section className="space-y-4">
-             <h3 className="text-[10px] font-black uppercase text-zinc-500">Envelope</h3>
-             {['attack', 'decay', 'sustain', 'release'].map(key => (
-               <div key={key} className="space-y-1">
-                 <div className="flex justify-between text-[8px] text-zinc-500"><span>{key.toUpperCase()}</span><span>{(synthSettings as any)[key]}s</span></div>
-                 <input type="range" min={0} max={key==='release'?5:2} step="0.01" value={(synthSettings as any)[key]} onChange={(e)=>setSynthSettings(s=>({...s, [key]: Number(e.target.value)}))} className="w-full h-1 bg-zinc-800 accent-sky-500 rounded appearance-none" />
+
+          <section className="space-y-6">
+             <div className="flex items-center gap-2">
+              <Volume2 className="w-3.5 h-3.5 text-emerald-500" />
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Envelope & Mix</h3>
+            </div>
+             
+             {[
+               { key: 'attack', label: 'Attack', max: 1 },
+               { key: 'decay', label: 'Decay', max: 1 },
+               { key: 'sustain', label: 'Sustain', max: 1 },
+               { key: 'release', label: 'Release', max: 5 },
+               { key: 'volume', label: 'Volume', min: -40, max: 0, step: 1 }
+             ].map(item => (
+               <div key={item.key} className="space-y-2">
+                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
+                   <span className="text-zinc-600">{item.label}</span>
+                   <span className="text-sky-500">{(synthSettings as any)[item.key]}{(item.key === 'volume' ? 'dB' : 's')}</span>
+                 </div>
+                 <input 
+                  type="range" 
+                  min={item.min ?? 0.01} 
+                  max={item.max} 
+                  step={item.step ?? 0.01} 
+                  value={(synthSettings as any)[item.key]} 
+                  onChange={(e) => setSynthSettings(s => ({ ...s, [item.key]: Number(e.target.value) }))}
+                  className="w-full h-1.5 bg-zinc-900 accent-sky-500 rounded-full appearance-none cursor-pointer border border-zinc-800"
+                 />
                </div>
              ))}
           </section>
         </aside>
 
-        <div className="flex-1 relative flex overflow-hidden bg-[#0F0F11]">
-          <div className="w-16 bg-zinc-900 border-r border-zinc-800 shrink-0">
-            {pitchList.map(pitch => {
-              const isSharp = pitch.includes('#') || pitch.includes('b');
-              return (
-                <div key={pitch} className={isSharp ? "bg-[#1E293B] text-[8px] text-slate-500 flex items-center justify-end pr-2" : "bg-[#E2E8F0] text-[#475569] text-[9px] font-bold flex items-center justify-end pr-2"} style={{ height: CELL_SIZE }}>
-                  {pitch}
+        {/* Timeline Grid */}
+        <div className="flex-1 relative flex flex-col overflow-hidden">
+          {/* Legend Header (optional markers) */}
+          <div className="h-8 shrink-0 flex bg-zinc-950 border-b border-zinc-800">
+            <div className="w-20 shrink-0 border-r border-zinc-800"></div>
+            <div className="flex-1 flex">
+              {Array.from({ length: steps }).map((_, i) => (
+                <div key={i} className="flex-1 flex items-center justify-center border-r border-zinc-900 text-[8px] font-black text-zinc-700">
+                  {i + 1}
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-          <div className="flex-1 grid-bg overflow-auto">
-            <div className="relative" style={{ height: pitchList.length * CELL_SIZE, width: steps * CELL_SIZE }}>
-              {currentStep >= 0 && <div className="absolute top-0 bottom-0 w-px bg-sky-400 z-30" style={{ left: currentStep * CELL_SIZE }} />}
-              {pitchList.map((pitch, r) => {
+
+          <div className="flex-1 flex overflow-hidden">
+            {/* Piano Keys */}
+            <div className="w-20 shrink-0 bg-zinc-950 border-r border-zinc-800 overflow-hidden flex flex-col">
+              {pitchList.map(pitch => {
                 const isSharp = pitch.includes('#') || pitch.includes('b');
-                return Array.from({ length: steps }).map((_, c) => {
-                  const active = isCellActive(r, c);
-                  const preview = isCellPreview(r, c);
-                  const noteStart = isNoteStart(r, c);
+                return (
+                  <div 
+                    key={pitch} 
+                    className={`
+                      shrink-0 flex items-center justify-center border-b border-zinc-900/50 relative
+                      ${isSharp ? 'bg-[#0F0F12] text-zinc-600' : 'bg-zinc-100 text-zinc-900 font-black'}
+                    `}
+                    style={{ height: CELL_SIZE }}
+                  >
+                    <span className="text-[10px] font-mono tracking-tighter uppercase relative z-10">{pitch}</span>
+                    <div className="absolute right-0 w-1.5 h-full bg-zinc-800/20"></div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Grid Container */}
+            <div className="flex-1 overflow-auto relative custom-scrollbar bg-grid-pattern">
+              <div className="relative" style={{ height: pitchList.length * CELL_SIZE, width: steps * CELL_SIZE }}>
+                
+                {/* Playhead */}
+                {currentStep >= 0 && (
+                  <motion.div 
+                    className="absolute top-0 bottom-0 w-1 bg-sky-500/50 z-40"
+                    style={{ left: currentStep * CELL_SIZE }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  >
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-sky-500 rounded-full border-2 border-zinc-950 shadow-[0_0_10px_#0ea5e9]"></div>
+                  </motion.div>
+                )}
+
+                {/* Grid Cells */}
+                {pitchList.map((pitch, r) => {
+                  const isSharp = pitch.includes('#') || pitch.includes('b');
                   return (
-                    <div 
-                      key={`${r}-${c}`} 
-                      onMouseDown={()=>onCellMouseDown(r, c)} 
-                      onMouseEnter={()=>onCellMouseEnter(r, c)}
-                      className={`absolute border-r border-b border-zinc-800/10 cursor-crosshair ${isSharp ? 'bg-zinc-950/40' : ''} ${active || preview ? 'z-10 bg-sky-500/20' : 'hover:bg-zinc-800/30'}`}
-                      style={{ width: CELL_SIZE, height: CELL_SIZE, left: c * CELL_SIZE, top: r * CELL_SIZE }}
-                    >
-                      {(active || preview) && noteStart && (
-                        <div className={`absolute top-1 left-1 bottom-1 rounded border ${preview ? 'bg-sky-400/30' : 'bg-sky-500 shadow-lg shadow-sky-500/20'}`} style={{ width: (preview ? previewNote!.duration : notes.find(n=>n.pitch===pitch && n.startStep===c)!.duration) * CELL_SIZE - 4 }} />
-                      )}
+                    <div key={`row-${r}`} className="flex absolute" style={{ top: r * CELL_SIZE, height: CELL_SIZE, left: 0 }}>
+                      {Array.from({ length: steps }).map((_, c) => {
+                        const active = isCellActive(r, c);
+                        const preview = isCellPreview(r, c);
+                        const noteStart = isNoteStart(r, c);
+                        const duration = getNoteDuration(r, c);
+                        const isMajorBeat = c % 4 === 0;
+
+                        return (
+                          <div 
+                            key={`cell-${r}-${c}`}
+                            onMouseDown={() => onCellMouseDown(r, c)}
+                            onMouseEnter={() => onCellMouseEnter(r, c)}
+                            className={`
+                              shrink-0 border-r border-b border-zinc-800/10 cursor-pointer transition-colors relative
+                              ${isSharp ? 'bg-zinc-950/40' : 'bg-transparent'}
+                              ${isMajorBeat ? 'border-r-zinc-700/30' : ''}
+                              hover:bg-sky-500/10
+                            `}
+                            style={{ width: CELL_SIZE, height: CELL_SIZE }}
+                          >
+                            {/* Sequence Note */}
+                            {(active || preview) && noteStart && (
+                              <motion.div 
+                                initial={preview ? { scale: 1 } : { scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className={`
+                                  absolute top-1 left-1 bottom-1 rounded-md z-20 border-b-4
+                                  ${preview 
+                                    ? 'bg-sky-400/40 border-sky-400/20' 
+                                    : 'bg-sky-500 border-sky-700 shadow-[0_5px_15px_rgba(14,165,233,0.3)]'
+                                  }
+                                `}
+                                style={{ width: duration * CELL_SIZE - 4 }}
+                              >
+                                {!preview && (
+                                  <div className="px-2 py-0.5 pointer-events-none">
+                                    <div className="w-full h-0.5 bg-white/20 rounded-full mb-1"></div>
+                                    <div className="w-1/2 h-0.5 bg-white/20 rounded-full"></div>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
-                });
-              })}
+                })}
+              </div>
             </div>
           </div>
         </div>
